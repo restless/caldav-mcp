@@ -3,7 +3,7 @@ import type { CalDAVClient, RecurrenceRule } from "ts-caldav";
 import { z } from "zod";
 
 type UpdateEventInput = {
-	uid: string;
+	href: string;
 	calendarUrl: string;
 	summary?: string;
 	start?: string;
@@ -36,9 +36,11 @@ export function registerUpdateEvent(client: CalDAVClient, server: McpServer) {
 		"update-event",
 		{
 			description:
-				"Updates an existing event in the calendar specified by its URL. Only provided fields are changed.",
+				"Updates an existing event in the calendar specified by its URL. Identify the event by the exact `href` returned from list-events. Only provided fields are changed.",
 			inputSchema: {
-				uid: z.string(),
+				href: z
+					.string()
+					.describe("Exact event href as returned by list-events"),
 				calendarUrl: z.string(),
 				summary: z.string().optional(),
 				start: z.string().datetime({ offset: true }).optional(),
@@ -50,7 +52,7 @@ export function registerUpdateEvent(client: CalDAVClient, server: McpServer) {
 		},
 		async (args: UpdateEventInput) => {
 			const {
-				uid,
+				href,
 				calendarUrl,
 				summary,
 				start,
@@ -60,12 +62,9 @@ export function registerUpdateEvent(client: CalDAVClient, server: McpServer) {
 				recurrenceRule,
 			} = args;
 
-			const base = calendarUrl.endsWith("/") ? calendarUrl : `${calendarUrl}/`;
-			const href = `${base}${uid}.ics`;
-
 			const [existing] = await client.getEventsByHref(calendarUrl, [href]);
 			if (!existing) {
-				throw new Error(`Event not found: ${uid}`);
+				throw new Error(`Event not found: ${href}`);
 			}
 
 			const updated = await client.updateEvent(calendarUrl, {

@@ -20,7 +20,7 @@
 - List calendar events within a specific timeframe
 - Create calendar events
 - Update calendar events
-- Delete calendar events by UID
+- Delete calendar events by href
 
 ## Setup
 
@@ -93,7 +93,8 @@ Parameters:
 
 Returns:
 - A list of events that fall within the given timeframe, each containing:
-  - `uid`: Unique identifier for the event (required for deletion)
+  - `uid`: Unique identifier for the event
+  - `href`: Exact server-side path of the event resource (required for update/delete)
   - `summary`: Event title/summary
   - `start`: Event start time
   - `end`: Event end time
@@ -103,7 +104,7 @@ Returns:
 Updates an existing calendar event. Only provided fields are changed.
 
 Parameters:
-- `uid`: String - Unique identifier of the event to update (obtained from list-events)
+- `href`: String - Exact event href obtained from list-events
 - `calendarUrl`: String - URL of the calendar
 - `summary`: String (optional) - New event title/summary
 - `start`: DateTime string (optional) - New event start time
@@ -120,7 +121,7 @@ Returns:
 Deletes an event from the calendar.
 
 Parameters:
-- `uid`: String - Unique identifier of the event to delete (obtained from list-events)
+- `href`: String - Exact event href obtained from list-events
 - `calendarUrl`: String - URL of the calendar
 
 Returns:

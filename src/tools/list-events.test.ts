@@ -16,12 +16,16 @@ describe("registerListEvents", () => {
 			getEvents: vi.fn().mockResolvedValue([
 				{
 					uid: "event-123",
+					href: "/test/calendar/event-123.ics",
+					etag: '"etag-1"',
 					summary: "Test Event",
 					start: new Date("2025-10-13T10:00:00Z"),
 					end: new Date("2025-10-13T11:00:00Z"),
 				},
 				{
 					uid: "event-456",
+					href: "/test/calendar/random-slug.ics",
+					etag: '"etag-2"',
 					summary: "Another Event",
 					start: new Date("2025-10-14T14:00:00Z"),
 					end: new Date("2025-10-14T15:00:00Z"),
@@ -69,5 +73,56 @@ describe("registerListEvents", () => {
 		expect(events[0]).toHaveProperty("summary", "Test Event");
 		expect(events[1]).toHaveProperty("uid", "event-456");
 		expect(events[1]).toHaveProperty("summary", "Another Event");
+	});
+
+	test("includes href for each event so callers can update/delete without guessing", async () => {
+		const mockClient = {
+			getEvents: vi.fn().mockResolvedValue([
+				{
+					uid: "event-123",
+					href: "/test/calendar/event-123.ics",
+					etag: '"etag-1"',
+					summary: "Test Event",
+					start: new Date("2025-10-13T10:00:00Z"),
+					end: new Date("2025-10-13T11:00:00Z"),
+				},
+				{
+					uid: "event-456",
+					href: "/test/calendar/random-server-slug.ics",
+					etag: '"etag-2"',
+					summary: "Another Event",
+					start: new Date("2025-10-14T14:00:00Z"),
+					end: new Date("2025-10-14T15:00:00Z"),
+				},
+			]),
+		};
+
+		let toolHandler: ToolHandler | null = null;
+		const server = new McpServer({ name: "test-server", version: "0.1.0" });
+		const originalRegisterTool = server.registerTool.bind(server);
+		server.registerTool = vi.fn(
+			(name: string, config: unknown, handler: ToolHandler) => {
+				if (name === "list-events") toolHandler = handler;
+				return originalRegisterTool(name, config, handler);
+			},
+		) as typeof server.registerTool;
+
+		registerListEvents(mockClient as CalDAVClient, server);
+		if (!toolHandler) throw new Error("list-events handler not registered");
+		const events = JSON.parse(
+			(
+				await toolHandler({
+					calendarUrl: "/test/calendar/",
+					start: "2025-10-01T00:00:00Z",
+					end: "2025-10-31T23:59:59Z",
+				})
+			).content[0].text,
+		);
+
+		expect(events[0]).toHaveProperty("href", "/test/calendar/event-123.ics");
+		expect(events[1]).toHaveProperty(
+			"href",
+			"/test/calendar/random-server-slug.ics",
+		);
 	});
 });

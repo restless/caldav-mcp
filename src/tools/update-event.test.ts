@@ -4,7 +4,7 @@ import { describe, expect, test, vi } from "vitest";
 import { registerUpdateEvent } from "./update-event.js";
 
 type ToolHandler = (params: {
-	uid: string;
+	href: string;
 	calendarUrl: string;
 	summary?: string;
 	start?: string;
@@ -15,7 +15,7 @@ type ToolHandler = (params: {
 
 const existingEvent: Event = {
 	uid: "event-123",
-	href: "/f/test-calendar/event-123.ics",
+	href: "/f/test-calendar/random-server-slug.ics",
 	etag: '"abc123"',
 	summary: "Original summary",
 	start: new Date("2026-04-03T10:00:00Z"),
@@ -36,7 +36,7 @@ function makeServer() {
 }
 
 describe("registerUpdateEvent", () => {
-	test("updates only the provided fields", async () => {
+	test("looks up event by exact href and updates only the provided fields", async () => {
 		const mockClient = {
 			getEventsByHref: vi.fn().mockResolvedValue([existingEvent]),
 			updateEvent: vi.fn().mockResolvedValue({
@@ -49,10 +49,11 @@ describe("registerUpdateEvent", () => {
 
 		const { server, getHandler } = makeServer();
 		registerUpdateEvent(mockClient as unknown as CalDAVClient, server);
-		const handler = getHandler()!;
+		const handler = getHandler();
+		if (!handler) throw new Error("update-event handler not registered");
 
 		const result = await handler({
-			uid: "event-123",
+			href: existingEvent.href,
 			calendarUrl: "/f/test-calendar/",
 			summary: "Updated summary",
 		});
@@ -60,12 +61,13 @@ describe("registerUpdateEvent", () => {
 		expect(result.content[0].text).toBe("event-123");
 		expect(mockClient.getEventsByHref).toHaveBeenCalledWith(
 			"/f/test-calendar/",
-			["/f/test-calendar/event-123.ics"],
+			[existingEvent.href],
 		);
 		expect(mockClient.updateEvent).toHaveBeenCalledWith(
 			"/f/test-calendar/",
 			expect.objectContaining({
 				uid: "event-123",
+				href: existingEvent.href,
 				etag: '"abc123"',
 				summary: "Updated summary",
 				start: existingEvent.start,
@@ -74,24 +76,7 @@ describe("registerUpdateEvent", () => {
 		);
 	});
 
-	test("throws when event is not found", async () => {
-		const mockClient = {
-			getEventsByHref: vi.fn().mockResolvedValue([]),
-			updateEvent: vi.fn(),
-		};
-
-		const { server, getHandler } = makeServer();
-		registerUpdateEvent(mockClient as unknown as CalDAVClient, server);
-		const handler = getHandler()!;
-
-		await expect(
-			handler({ uid: "missing", calendarUrl: "/f/test-calendar/" }),
-		).rejects.toThrow("Event not found: missing");
-
-		expect(mockClient.updateEvent).not.toHaveBeenCalled();
-	});
-
-	test("appends trailing slash to calendarUrl when building href", async () => {
+	test("works for events stored under non-uid filenames (no href guessing)", async () => {
 		const mockClient = {
 			getEventsByHref: vi.fn().mockResolvedValue([existingEvent]),
 			updateEvent: vi.fn().mockResolvedValue({
@@ -104,13 +89,39 @@ describe("registerUpdateEvent", () => {
 
 		const { server, getHandler } = makeServer();
 		registerUpdateEvent(mockClient as unknown as CalDAVClient, server);
-		const handler = getHandler()!;
+		const handler = getHandler();
+		if (!handler) throw new Error("update-event handler not registered");
 
-		await handler({ uid: "event-123", calendarUrl: "/f/test-calendar" });
+		await handler({
+			href: existingEvent.href,
+			calendarUrl: "/f/test-calendar/",
+			location: "Room 1",
+		});
 
 		expect(mockClient.getEventsByHref).toHaveBeenCalledWith(
-			"/f/test-calendar",
-			["/f/test-calendar/event-123.ics"],
+			"/f/test-calendar/",
+			["/f/test-calendar/random-server-slug.ics"],
 		);
+	});
+
+	test("throws when event is not found at the given href", async () => {
+		const mockClient = {
+			getEventsByHref: vi.fn().mockResolvedValue([]),
+			updateEvent: vi.fn(),
+		};
+
+		const { server, getHandler } = makeServer();
+		registerUpdateEvent(mockClient as unknown as CalDAVClient, server);
+		const handler = getHandler();
+		if (!handler) throw new Error("update-event handler not registered");
+
+		await expect(
+			handler({
+				href: "/f/test-calendar/missing.ics",
+				calendarUrl: "/f/test-calendar/",
+			}),
+		).rejects.toThrow("Event not found: /f/test-calendar/missing.ics");
+
+		expect(mockClient.updateEvent).not.toHaveBeenCalled();
 	});
 });
